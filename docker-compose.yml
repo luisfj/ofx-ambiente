@@ -1,0 +1,68 @@
+services:
+  db:
+    container_name: postgresdb_ofx
+    image: postgres:${POSTGRESQL_VERSION}
+    restart: unless-stopped
+    env_file: ".env"
+    volumes:
+      - ./postgres/data:/var/lib/postgresql/data
+      - ./postgres:/docker-entrypoint-initdb.d
+    environment:
+      - POSTGRES_USER=${POSTGRESQL_USER}
+      - POSTGRES_PASSWORD=${POSTGRESQL_USER}
+      - POSTGRES_MULTIPLE_DATABASES=${POSTGRESQL_DB},${POSTGRESQL_DB_MS_DATA},${POSTGRESQL_DB_KEYCLOAK}
+      # NOTE: POSTGRES_DB/USER/PASSWORD should match values in app container
+      # POSTGRES_PASSWORD: ${POSTGRESQL_PASS}
+      # POSTGRES_USER: ${POSTGRESQL_USER}
+      # POSTGRES_DB: ${POSTGRESQL_DB}
+      # POSTGRES_MULTIPLE_DATABASES: "${POSTGRESQL_DB}","${POSTGRESQL_DB_KEYCLOAK}"
+    ports:
+      - "5777:5432"
+
+  rabbitmq:
+    image: rabbitmq:3.13.3-management-alpine
+    container_name: rabbitmq_ofx
+    env_file: ".env"
+    restart: unless-stopped
+    ports:
+        - 5672:5672
+        - 15672:15672
+    environment:
+      - RABBITMQ_DEFAULT_PASS=admin
+      - RABBITMQ_DEFAULT_USER=admin
+    volumes:
+        - ./docker-conf/rabbitmq/data/:/var/lib/rabbitmq/
+        - ./docker-conf/rabbitmq/log/:/var/log/rabbitmq
+
+  keycloak:
+    container_name: keycloak
+    env_file: ".env"
+    # hostname: keycloak-dev.local
+    image: quay.io/keycloak/keycloak:25.0.2
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+
+      KC_LOG: console
+      # KC_HOSTNAME: http://host.docker.internal:9091/
+      KC_HOSTNAME: http://localhost:9091/
+      # KC_HOSTNAME_BACKCHANNEL_DYNAMIC: true
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://db:5432/${POSTGRESQL_DB_KEYCLOAK}
+      KC_DB_USERNAME: ${POSTGRESQL_USER}
+      KC_DB_PASSWORD: ${POSTGRESQL_PASS}
+      KC_HTTP_PORT: 9091
+      KC_LOG_LEVEL: info
+      KC_HOSTNAME_STRICT: false
+    command:
+      [
+        "start-dev",        
+        "--import-realm"
+      ]
+    volumes:
+      - ./keycloak/base-helm.json:/opt/keycloak/data/import/realm-export.json
+    ports:
+      - 9091:9091  
